@@ -8,14 +8,14 @@ class AuthService {
   private readonly refreshSecret: string;
 
   constructor() {
-    this.accessSecret = process.env.ACCESS_TOKEN_SECRET as string;
+    this.accessSecret = process.env.NEXT_PUBLIC_JWT_SECRET as string;
     this.refreshSecret = process.env.REFRESH_TOKEN_SECRET as string;
   }
 
   /**
    * Create Access Token
    */
-  public async createAccessToken(payload: User): Promise<string> {
+  public async createAccessToken(payload : any): Promise<string> {
     return new Promise((resolve, reject) => {
       const duration =`${TOKEN_TIME}h`;
       jwt.sign(
@@ -77,7 +77,7 @@ class AuthService {
   public async verifyRefreshToken(token: string): Promise<User> {
     try {
       const decoded = jwt.verify(token, this.refreshSecret) as User;
-      console.log(`---[REFRESH] memberNick: ${decoded.userPhone}---`);
+      // console.log(`---[REFRESH] memberNick: ${decoded.userPhone}---`);
       return decoded;
     } catch (err) {
       throw new Errors(HttpCode.UNAUTHORIZED, Message.INVALID_REFRESH_TOKEN);
@@ -87,15 +87,15 @@ class AuthService {
   /**
    * Rotate Tokens (Generate new Access using Refresh)
    */
-  public async rotateTokens(refreshToken: string): Promise<{
-    accessToken: string;
-    refreshToken: string;
-  }> {
-    const decoded = await this.verifyRefreshToken(refreshToken);
-    const newAccessToken = await this.createAccessToken(decoded);
-    const newRefreshToken = await this.createRefreshToken(decoded);
-    return { accessToken: newAccessToken, refreshToken: newRefreshToken };
-  }
+  // public async rotateTokens(refreshToken: string): Promise<{
+  //   accessToken: string;
+  //   refreshToken: string;
+  // }> {
+  //   const decoded = await this.verifyRefreshToken(refreshToken);
+  //   const newAccessToken = await this.createAccessToken(decoded);
+  //   const newRefreshToken = await this.createRefreshToken(decoded);
+  //   return { accessToken: newAccessToken, refreshToken: newRefreshToken };
+  // }
 }
 
 export default AuthService; 

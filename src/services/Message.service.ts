@@ -1,30 +1,48 @@
 import MessageModel from "../models/Message.model";
 import ChatModel from "../models/Chat.model";
+import UserModel from "../models/User.model";
 import Errors, { HttpCode, Message as ErrorMessage, Message } from "../libs/utils/Error";
 import { Message as IMessage, MessageInput } from "../libs/types/message";
 import { shapeIntoMongooseObjectId } from "../libs/utils/config";
+import { Types } from "mongoose";
+import {MessageEnum} from "../libs/enums/message.enum"
 
 class MessageService {
   private readonly messageModel;
   private readonly chatModel;
+  private readonly userModel
 
   constructor() {
     this.messageModel = MessageModel;
     this.chatModel = ChatModel;
+    this.userModel = UserModel
   }
 
   /**
    * Get all messages in a chat
    */
-  public async getMessages(chatId: string): Promise<IMessage[]> {
+  public async getMessages(chatId: string, userId: string): Promise<IMessage[]> {
     try {
+      const now = new Date();
+
       const messages: IMessage[] = await this.messageModel
-        .find({ chat: chatId 
-          
-        })
-        .populate("sender", "username userImage")
-        .populate("readBy.user", "username userImage")
-        .sort({ createdAt: 1 });
+        .find({ chat: chatId })
+        // .populate("sender", "username userImage")
+        // .populate("readBy.user", "username userImage")
+        .sort({ createdAt: 1});
+      
+      await this.messageModel.updateMany(
+      {
+        chat: chatId,
+        "readBy.user": { $ne: userId } // user not in readBy array
+      },
+      {
+        status : MessageEnum.READ,
+        $addToSet: {
+          readBy: { user: userId, at: now }
+        }
+      }
+    );
 
       return messages.map((m) => m.toJSON() as unknown as IMessage);
     } catch (err) {
@@ -38,22 +56,15 @@ class MessageService {
    */
   public async sendMessage(input: MessageInput): Promise<IMessage> {
     try {
-      const { chat, sender, text, attachments, receiver } = input;
-      
+      console.log("Input to sendMessage:", input);
       const message = await this.messageModel.create({
-        chat,
-        sender,
-        text,
-        attachments,
-        receiver,
-        readBy: [{ user: sender, at: new Date() }],
+        ...input,
+      
+        readBy: [{ user: input?.sender, at: new Date() }],
       });
 
       // update chat with lastMessage
-      await this.chatModel.findByIdAndUpdate(chat, { lastMessage: message._id });
-
-      await message.populate("sender", "username userImage");
-
+      await this.chatModel.findByIdAndUpdate(input?.chat, { lastMessage: message._id });
       return message.toJSON() as unknown as IMessage;
     } catch (err) {
       console.error("Error: sendMessage", err);
@@ -64,28 +75,52 @@ class MessageService {
   /**
    * Mark message as read by a user
    */
-  public async markAsRead(messageId: string, userId: string): Promise<IMessage> {
-    try {
-      const message = await this.messageModel.findByIdAndUpdate(
-        messageId,
-        {
-          $addToSet: { readBy: { user: userId, at: new Date() } },
-        },
-        { new: true }
-      )
-      .populate("sender", "username userImage")
-      .populate("readBy.user", "username userImage");
+public async markChatRead(chatId: string, userId: string) {
+  try {
+    const userObjectId = new Types.ObjectId(userId);
+    const now = new Date();
 
-      if (!message) {
-        throw new Errors(HttpCode.NOT_FOUND, ErrorMessage.NOT_FOUND);
+    // Update all messages from this chat where user has NOT read them
+    const result = await this.messageModel.updateMany(
+      {
+        chat: chatId,
+        "readBy.user": { $ne: userId } // user not in readBy array
+      },
+      {
+        status : MessageEnum.READ,
+        $addToSet: {
+          readBy: { user: userObjectId, at: now }
+        }
       }
+    );
 
-      return message.toJSON() as unknown as IMessage;
-    } catch (err) {
-      console.error("Error: markAsRead", err);
-      throw new Errors(HttpCode.BAD_REQUEST, ErrorMessage.UPDATE_FAILED);
-    }
+    return result.modifiedCount; // number of messages marked as read
+
+  } catch (err) {
+    console.error("Error: markChatRead", err);
+    throw new Errors(HttpCode.BAD_REQUEST, ErrorMessage.UPDATE_FAILED);
   }
+}
+
+public async messageRead(messages : IMessage[]) {
+  try {
+    // const userObjectId = new Types.ObjectId(userId);
+    // const now = new Date();
+  const allMessages = []
+
+		for (const message of messages) {
+				const updatedMessage = await this.messageModel.findByIdAndUpdate(message._id, { status: MessageEnum.READ }, { new: true })
+				allMessages.push(updatedMessage)
+			}
+
+      return allMessages
+
+  } catch (err) {
+    console.error("Error: markChatRead", err);
+    throw new Errors(HttpCode.BAD_REQUEST, ErrorMessage.UPDATE_FAILED);
+  }
+}
+
 }
 
 export default MessageService;

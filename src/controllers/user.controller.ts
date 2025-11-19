@@ -9,82 +9,38 @@ import { TOKEN_TIME } from "../libs/utils/config";
 import cloudinary from "../libs/cloudinary/cloudinary";
 import fileUpload from "express-fileupload";
 import { registerSchema } from "@/libs/utils/validator";
+import MailService from "../services/Mail.service";
+import MessageModel from "@/models/Message.model";
+import BaseError from "@/libs/utils/base.error";
 
 // Services 
 const userService = new UserService();
 const authService = new AuthService();
+const otpService = new MailService();
 
-const userController : commonObject = {};
-
-/**
- * SIGNUP
- */
-userController.signup = async (req: Request, res: Response) => {
-  try {
-    const input : UserInput = req.body;
-
-    if(!input.userPassword! || !input.userEmail || !input.username){
-      res.status(HttpCode.BAD_REQUEST).json({message : Message.INVALID_CREDENTIALS})
-    } 
-      const candidate = await UserModel.findOne({
-    $or: [
-    { username: input.username },
-    { phone: input.userEmail }
-    ]
-  });
-      if(candidate){
-      res.status(HttpCode.BAD_REQUEST).json({message : Message.USED_USERNAME_PHONE})
-      }
-    const result: User = await userService.signup(input);
-    // Create tokens
-    const accessToken = await authService.createAccessToken(result);
-    const refreshToken = await authService.createRefreshToken(result);
-
-    // Store refresh token securely
-    res.cookie("refreshToken", refreshToken, { 
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
-      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
-    });
-
-    // Access token can be sent directly
-    res.status(HttpCode.CREATED).json({
-      user: result,
-      accessToken
-    });
-
-  } catch (err) {
-    console.log("Error, signup:", err);
-    if (err instanceof Errors) res.status(err.code).json(err);
-    else res.status(Errors.standard.code).json(Errors.standard);
-  }
-};
-
+const userController: commonObject = {};
 /**
  * LOGIN
  */
 userController.login = async (req: Request, res: Response) => {
   try {
     const input: LoginInput = req.body;
-    
-    const result = await userService.login(input);
-    // Generate tokens
-    const accessToken = await authService.createAccessToken(result.user);
-    const refreshToken = await authService.createRefreshToken(result.user);
 
-    // Store refresh token in secure cookie
-    res.cookie("refreshToken", refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
-      maxAge: 7 * 24 * 60 * 60 * 1000
-    });
+    // const result = await userService.login(input);
 
-    res.status(HttpCode.OK).json({
-      user: result,
-      accessToken
-    });
+    const existingUser = await UserModel.findOne({ email: input.email });
+
+    if (existingUser) {
+      await otpService.sendOtp(input.email)
+      return res.status(HttpCode.OK).json({ message: "OTP sent to your email", email : existingUser.email })
+    }
+
+    const newUser = await UserModel.create({
+      email: input.email,
+    })
+
+    await otpService.sendOtp(newUser.email)
+    return  res.status(HttpCode.OK).json({ message: "OTP sent to your email" })
 
   } catch (err) {
     console.log("Error, login:", err);
@@ -93,35 +49,152 @@ userController.login = async (req: Request, res: Response) => {
   }
 };
 
-/**
- * REFRESH TOKEN
- */
-userController.refreshToken = async (req: Request, res: Response) => {
+userController.verify = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    console.log("refreshToken");
-    const token = req.cookies.refreshToken;
-    if (!token) {
-      throw new Errors(HttpCode.UNAUTHORIZED, Message.INVALID_TOKEN);
+    const { email, otp } = req.body
+    const result = await otpService.verifyOtp(email, otp)
+    if (result) {  
+      const user = await UserModel.findOne(
+        { email },
+      ).lean<User>();
+
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+    return res.status(HttpCode.OK).json({user});
+
     }
+  } catch (error) {
+    next(error)
+  }
+}
 
-    const { accessToken, refreshToken } = await authService.rotateTokens(token);
 
-    // Update refresh token in cookie
-    res.cookie("refreshToken", refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
-      maxAge: 7 * 24 * 60 * 60 * 1000
-    });
-
-    res.status(HttpCode.OK).json({ accessToken });
-
-  } catch (err) {
-    console.log("Error, refreshToken:", err);
+//  EDIT USER
+userController.editUser = async (req: ExtendedRequest, res: Response) => {
+    try {
+    const input: UserUpdateInput = req.body;   
+    const result = await userService.editUserDetails(req.user, input);
+    res.status(HttpCode.OK).json(result);
+  } catch (err) { 
     if (err instanceof Errors) res.status(err.code).json(err);
     else res.status(Errors.standard.code).json(Errors.standard);
   }
+}
+
+userController.sendOtp = async (req: ExtendedRequest, res: Response) => {
+  try {
+    const { email } = req.body;
+    const existingUser = await UserModel.findOne({ email });
+
+    if (existingUser) {
+      return res.status(400).json({ message: Message.ALREADY_REGISTERED });
+    }
+
+    await otpService.sendOtp(email);
+    return res.status(200).json({ email });
+  } catch (err) {
+    if (err instanceof Errors) {
+      return res.status(err.code).json(err);
+    } else {
+      return res.status(Errors.standard.code).json(Errors.standard);
+    }
+  }
 };
+
+
+userController.changeUserEmail = async (req: ExtendedRequest, res: Response) => {
+  try {
+    const { email, otp } = req.body;
+    const result = await otpService.verifyOtp(email, otp);
+
+    if (!result) {
+      return res.status(400).json({ message: "Invalid OTP" });
+    }
+
+    const userId = req.user._id;
+    const user = await UserModel.findByIdAndUpdate(userId, { email }, { new: true });
+
+    if (!user) { 
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    console.log("Updated user:", user);
+    return res.status(HttpCode.OK).json(user);
+  } catch (err) {
+    if (err instanceof Errors) {
+      return res.status(err.code).json(err);
+    } else {
+      return res.status(Errors.standard.code).json(Errors.standard);
+    }
+  }
+};
+
+// DELETE USER
+userController.deleteUser = async (req: ExtendedRequest, res: Response) => {
+  try {
+
+    const userId = req.user._id;
+    const user = await UserModel.findByIdAndDelete(userId,  { new: true });
+
+    if (!user) { 
+      return res.status(404).json({ message: "User not found" });
+    }
+    return res.status(HttpCode.OK).json({ message : "User deleted successfully" });
+  } catch (err) {
+    if (err instanceof Errors) {
+      return res.status(err.code).json(err);
+    } else {
+      return res.status(Errors.standard.code).json(Errors.standard);
+    }
+  }
+};
+
+
+
+userController.checkUsername = async (req: ExtendedRequest, res: Response) => {
+    try { 
+    const username = req.query.username as string;
+    // const user = (req as any).user._id as string;
+    const result = await userService.checkUsername(username)
+    res.status(HttpCode.OK).json(result);
+  } catch (err) {
+    console.log("Error, getMemberDetails:", err);
+    if (err instanceof Errors) res.status(err.code).json(err);
+    else res.status(Errors.standard.code).json(Errors.standard);
+  }
+}
+
+/**
+ * REFRESH TOKEN
+ */
+// userController.refreshToken = async (req: Request, res: Response) => {
+//   try {
+//     console.log("refreshToken");
+//     const token = req.cookies.refreshToken;
+//     if (!token) {
+//       throw new Errors(HttpCode.UNAUTHORIZED, Message.INVALID_TOKEN);
+//     }
+
+//     const { accessToken, refreshToken } = await authService.rotateTokens(token);
+
+//     // Update refresh token in cookie
+//     res.cookie("refreshToken", refreshToken, {
+//       httpOnly: true,
+//       secure: process.env.NODE_ENV === "production",
+//       sameSite: "strict",
+//       maxAge: 7 * 24 * 60 * 60 * 1000
+//     });
+
+//     res.status(HttpCode.OK).json({ accessToken });
+
+//   } catch (err) {
+//     console.log("Error, refreshToken:", err);
+//     if (err instanceof Errors) res.status(err.code).json(err);
+//     else res.status(Errors.standard.code).json(Errors.standard);
+//   }
+// };
 
 userController.uploadProfileImage = async (req: ExtendedRequest, res: Response) => {
   try {
@@ -212,13 +285,38 @@ userController.logout = (req: ExtendedRequest, res: Response) => {
 /**
  * GET MEMBER DETAILS
  */
+
+userController.createContact = async (req: ExtendedRequest, res: Response) => {
+  try {
+    const {email} = req.body
+    const result = await userService.createContact(req.user, email);
+    res.status(HttpCode.OK).json({contact : result});
+  } catch (err) {
+    console.log("Error, getMemberDetails:", err);
+    if (err instanceof Errors) res.status(err.code).json(err);
+    else res.status(Errors.standard.code).json(Errors.standard);
+  }
+};
+
+userController.getMyContacts = async (req: ExtendedRequest, res: Response) => {
+  try {
+    console.log("getMyContacts");
+    const result = await userService.getMyContacts(req.user);
+    res.status(HttpCode.OK).json({contacts:result});
+  } catch (err) {
+    console.log("Error, getMyContacts:", err);
+    if (err instanceof Errors) res.status(err.code).json(err);
+    else res.status(Errors.standard.code).json(Errors.standard);
+  }
+};
+ 
 userController.getUserDetails = async (req: ExtendedRequest, res: Response) => {
   try {
     console.log("getMemberDetails");
     const result = await userService.getUserDetails(req.user);
     res.status(HttpCode.OK).json(result);
   } catch (err) {
-    console.log("Error, getMemberDetails:", err);
+   
     if (err instanceof Errors) res.status(err.code).json(err);
     else res.status(Errors.standard.code).json(Errors.standard);
   }
@@ -231,7 +329,7 @@ userController.searchUser = async (req: ExtendedRequest, res: Response) => {
     const result = await userService.searchUserByUsername(search);
     res.status(HttpCode.OK).json(result);
   } catch (err) {
-    console.log("Error, getMemberDetails:", err);
+    
     if (err instanceof Errors) res.status(err.code).json(err);
     else res.status(Errors.standard.code).json(Errors.standard);
   }
@@ -259,5 +357,17 @@ userController.getAllUsers = async (req: ExtendedRequest, res: Response) => {
     else res.status(Errors.standard.code).json(Errors.standard);
   }
 };
+
+userController.deleteContact = async (req: ExtendedRequest, res: Response) => {
+  try {
+    const contactId = req.params.contactId;
+    const result = await userService.deleteContact(req.user, contactId);
+    res.status(HttpCode.OK).json({message : "Contact deleted successfully"});
+  } catch (err) {
+    console.log("Error, deleteContact:", err);
+    if (err instanceof Errors) res.status(err.code).json(err);
+    else res.status(Errors.standard.code).json(Errors.standard);
+  }
+}
 
 export default userController;

@@ -6,6 +6,8 @@ import { sendMessageSchema, markReadSchema } from "../libs/utils/validator";
 import ChatService from "../services/Chat.service";
 import { shapeIntoMongooseObjectId } from "../libs/utils/config";
 import { commonObject } from "../libs/types/common";
+import UserService from "@/services/User.service";
+import UserModel from "../models/User.model";
 
 const messageService = new MessageService();
 const chatService = new ChatService();
@@ -15,10 +17,11 @@ const messageController : commonObject = {};
  * Get all messages in a chat
  */
 messageController.getMessages = async (req: Request, res: Response) => {
+  const userId = (req as any).user._id as string;
   const chatId = req.params.chatId;
   try {
-    const result: IMessage[] = await messageService.getMessages(chatId);
-    res.status(HttpCode.OK).json(result);
+    const result: IMessage[] = await messageService.getMessages(chatId, userId);
+    res.status(HttpCode.OK).json({messages : result});
   } catch (err) {
     if (err instanceof Errors) res.status(err.code).json(err);
     else res.status(Errors.standard.code).json(Errors.standard);
@@ -30,25 +33,26 @@ messageController.getMessages = async (req: Request, res: Response) => {
  */
 messageController.sendMessage = async (req: Request, res: Response) => {
   const sender = (req as any).user._id as string;
+  console.log("Data", req.body)
   const parsed = sendMessageSchema.safeParse(req.body);
+  // console.log("Parsed message data:", parsed);
+
   if (!parsed.success) {
     return res.status(HttpCode.BAD_REQUEST).json({ message: parsed.error.message });
   }
-
 const receiver = Array.isArray(parsed.data.receiver)
   ? parsed.data.receiver[0] // take first for DM
   : parsed.data.receiver;
   if (!receiver) {
     return res.status(HttpCode.BAD_REQUEST).json({ message: "Receiver is required." });
   } 
-
   try {
    let chatId = parsed.data.chat 
     ? shapeIntoMongooseObjectId(parsed.data.chat) 
     : null;
-    console.log("Parsed chat ID:", chatId);
+    // console.log("Parsed chat ID:", chatId);
     // Ensure DM chat exists
-    if(!parsed.data.chat){
+    if(!chatId) {
         const existingChat = await chatService.getOrCreateDM(sender, receiver);
         chatId = shapeIntoMongooseObjectId(existingChat._id);
     }
@@ -56,15 +60,13 @@ const receiver = Array.isArray(parsed.data.receiver)
     const result: IMessage = await messageService.sendMessage({
       chat: chatId, // <-- important fix // pass only the ID
       sender,
-      text: parsed.data.text,
-    //   attachments: parsed.data.attachments?.map(att => ({
-    //     url: att.url,
-    //     type: att.type ?? "unknown"
-    //   })),
-      receiver: parsed.data.receiver,
+      ...req.body,
     });
 
-    res.status(HttpCode.CREATED).json(result);
+    const receiverUser = await UserModel.findById(result.receiver)
+    const senderUser = await UserModel.findById(result.sender)
+
+    res.status(HttpCode.CREATED).json({message : result, sender : senderUser, receiver : receiverUser});
   } catch (err) {
     console.error("Error sending DM:", err);
     if (err instanceof Errors) res.status(err.code).json(err);
@@ -75,21 +77,33 @@ const receiver = Array.isArray(parsed.data.receiver)
 /**
  * Mark a message as read
  */
-messageController.markMessageAsRead = async (req: Request, res: Response) => {
+messageController.markChatRead = async (req: Request, res: Response) => {
   const userId = (req as any).user._id as string;
-  const parsed = markReadSchema.safeParse(req.body);
-  if (!parsed.success) {
-    return res.status(HttpCode.BAD_REQUEST).json({ message: parsed.error.message });
-  }
-
-  const { messageId } = parsed.data;
-
+  const { chatId } = req.body;
   try {
-    const result: IMessage = await messageService.markAsRead(messageId, userId);
-    res.status(HttpCode.OK).json(result);
-  } catch (err) {
-    if (err instanceof Errors) res.status(err.code).json(err);
-    else res.status(Errors.standard.code).json(Errors.standard);
+    const result = await messageService.markChatRead(chatId, userId);
+    res.status(200).json({ updated: result });
+  } catch (err: any) {
+    if (err instanceof Errors) {
+      res.status(err.code).json(err);
+    } else {
+      res.status(Errors.standard.code).json(Errors.standard);
+    }
+  }
+};
+
+messageController.markMessageRead = async (req: Request, res: Response) => {
+  // const userId = (req as any).user._id as string;
+  const { messages } = req.body;
+  try {
+    const result = await messageService.messageRead(messages);
+    res.status(200).json({ messages: result });
+  } catch (err: any) {
+    if (err instanceof Errors) {
+      res.status(err.code).json(err);
+    } else {
+      res.status(Errors.standard.code).json(Errors.standard);
+    }
   }
 };
 

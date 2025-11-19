@@ -10,6 +10,9 @@ export enum HttpCode {
 }
 
 export enum Message {
+    ALREADY_REGISTERED = "User with this email already exists",
+    NO_USER_FOUND = "No user found with that email.",
+    CANT_CR_SELF = "You can not add yourself as a contact",
     CANNOT_DM_SELF = "You cannot send a direct message to yourself.",
     DELETE_SUCCESS = "Succesfully deleted",
     NOT_UPLOADED = "No file uploaded",
@@ -20,7 +23,7 @@ export enum Message {
     SOMETHING_WENT_WRONG = "Something went wrong!",
     NO_DATA_FOUND = "No data found!",
     UPDATE_FAILED = "Update failed!",
-    USED_USERNAME_PHONE = "You are inserting an already used username or phone number.",
+    ALREADY_EXIST = "This contact already exist",
     NO_MEMBER_NICK = "No member found with that nickname.",
     BLOCKED_USER ="You have been blocked ,contact the restaurant",
     WRONG_PASSWORD = "Wrong password!",

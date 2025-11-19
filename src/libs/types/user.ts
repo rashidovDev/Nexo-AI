@@ -6,13 +6,15 @@ export interface User {
          _id: ObjectId;
         userType: UserType; // Optional
         userStatus: UserStatus; // Optional
-        userEmail: string; // Required
+        firstName: string; // Optional       
+        lastName: string; // Optional
+        email: string; // Required
         username : string; // Required
-        userPassword: string; // Required
         userImage?: {
             url : string,
             public_id : string
         }; // Optional
+        muted: boolean;
         lastSeen?: Date; // Optional
         createdAt: Date; // Optional
         updatedAt: Date; // Optional (corrected from 'updete')
@@ -20,26 +22,22 @@ export interface User {
 export interface UserInput {
     userType?: UserType; // Optional
     userStatus?: UserStatus; // Optional
-    userEmail : string // Required
+    email : string // Required
+    lastname : string; // Optional
+    firstname : string; // Optional
     username: string; // Required
-    userPassword: string; // Required
     userImage?: string; // Optional
 }
 
 export interface LoginInput {
-    username:string;
-    userPassword:string;
+    email : string;
 }
+
 export interface UserUpdateInput {
-        _id: ObjectId;
-        userStatus?: UserStatus; // Optional
-        userEmail?: string; // Required
-        username?: string; // Required
-        userPassword?: string; // Required
-        userDesc?: string; // Optional
-        userAddress?: string; // Optional
-        userImage?: string; // Optional
-        
+    username: string; // Required   
+    firstName: string; // Optional
+    lastName: string; // Optional
+    bio: string; // Optional
 }
 export interface ExtendedRequest extends Request {
     user: User;

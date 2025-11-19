@@ -15,10 +15,9 @@ class ChatService {
    public async getMyChats(userId : string): Promise<Chat[]> {
     try {
     const chats : Chat[] = await this.chatModel.find({ participants: userId })
-      .populate("participants", "username userImage")
+      .populate("participants", "email username userImage bio")
       .populate({
         path: "lastMessage",
-        populate: { path: "sender", select: "username userImage" },
       })
       .sort({ updatedAt: -1 });
       return chats.map(chat => chat.toJSON() as unknown as Chat);

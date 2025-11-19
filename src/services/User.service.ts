@@ -1,7 +1,7 @@
 import bcrypt from "bcryptjs";
 import UserModel from "../models/User.model";
 import Errors, { HttpCode, Message } from "../libs/utils/Error";
-import { LoginInput, User, UserInput } from "../libs/types/user";
+import {  User,  UserUpdateInput } from "../libs/types/user";
 import { UserStatus } from "../libs/enums/user.enum";
 import { shapeIntoMongooseObjectId } from "../libs/utils/config";
 
@@ -14,71 +14,117 @@ class UserService {
    * Sign up new member
    */
   /** SPA Signup */
-   public async signup(input: UserInput): Promise<User> {
-    const salt = await bcrypt.genSalt(); 
-    input.userPassword = await bcrypt.hash(input.userPassword, salt);
-    try {
-      const result = await this.userModel.create(input);
-      result.userPassword = ""; // Hide password before returning
-      return result.toJSON() as unknown as User;
-    } catch (err) {
-      console.log("Error , model:signup", err);
-      throw new Errors(HttpCode.BAD_REQUEST, Message.CREATION_FAILED);
+  //  public async signup(input: UserInput): Promise<User> {
+  //   const salt = await bcrypt.genSalt(); 
+  //   input.userPassword = await bcrypt.hash(input.userPassword, salt);
+  //   try {
+  //     const result = await this.userModel.create(input);
+  //     result.userPassword = ""; // Hide password before returning
+  //     return result.toJSON() as unknown as User;
+  //   } catch (err) {
+  //     console.log("Error , model:signup", err);
+  //     throw new Errors(HttpCode.BAD_REQUEST, Message.CREATION_FAILED);
+  //   }
+  // }
+// EDIT USER PROFILE
+  public async editUserDetails(user : User, input : UserUpdateInput): Promise <User> {
+    const userId = shapeIntoMongooseObjectId(user._id);
+    const result = await this.userModel.findOneAndUpdate({
+      _id: userId,
+      userStatus: UserStatus.ACTIVE
+   },
+   {
+    $set: {
+       ...input
     }
+    },
+    { new: true } // return the updated document
+    )  
+    .exec();
+    if(!result) throw new Errors(HttpCode.NOT_FOUND, Message.NO_DATA_FOUND);
+    return result.toJSON() as unknown as User;
   }
 
-  /**
-   * Login existing member
-   */
-   /** SPA Login */
-   public async login(input: LoginInput): Promise<{
-    user: User;
-  }> {
-    // 1️⃣ Find user by nickname (and not deleted)
-    const user = await this.userModel
-      .findOne(
-        {
-          username: input.username,
-          memberStatus: { $ne: UserStatus.DELETE },
-        },
-        { username: 1, userPassword: 1, userStatus: 1 }
-      )
-      .exec();
 
-    if (!user) {
-      throw new Errors(HttpCode.NOT_FOUND, Message.NO_MEMBER_NICK);
-    } else if (user.userStatus === UserStatus.BLOCK) {
-      throw new Errors(HttpCode.FORBIDDEN, Message.BLOCKED_USER);
-    }
+   public async checkUsername(username : string): Promise <boolean> {
 
-    // 2️⃣ Check password
-    const isMatch = await bcrypt.compare(input.userPassword, user.userPassword);
-    if (!isMatch) {
-      throw new Errors(HttpCode.UNAUTHORIZED, Message.WRONG_PASSWORD);
-    }
-
-    // 3️⃣ Fetch complete user data without password
-    const foundMember = await this.userModel
-      .findById(user._id)
-      .select("username userType userStatus createdAt updatedAt")
-      .exec();
-
-    if (!foundMember) {
-      throw new Errors(HttpCode.NOT_FOUND, Message.NO_MEMBER_NICK);
-    }
-    console.log(foundMember)
-
-    const safeUser = foundMember.toJSON() as unknown as User
-
-    // 5️⃣ Return user & tokens
-    return {
-      user: safeUser,
-    };
+    const result = await this.userModel.findOne({
+      username,
+      userStatus: UserStatus.ACTIVE}
+    )  
+    .exec();
+    const available = !result;
+    
+    return available as unknown as boolean;
   }
+
 
   /**
    * Find member by ID
    */
+public async createContact(user: User, email: string): Promise<User> {
+  const userId = shapeIntoMongooseObjectId(user._id);
+
+  // 1️⃣ Find the contact user by email
+  const contact = await this.userModel
+    .findOne({ email, userStatus: UserStatus.ACTIVE })
+    .select('_id email userStatus bio userImage firstName lastName') // ✅ only return these fields
+    .exec();
+
+  if (!contact) throw new Errors(HttpCode.NOT_FOUND, Message.NO_USER_FOUND);
+
+  // 2️⃣ Prevent adding yourself
+  if (contact._id.equals(userId)) {
+    throw new Errors(HttpCode.BAD_REQUEST, Message.CANT_CR_SELF);
+  }
+
+  // 3️⃣ Check if contact already exists
+  const isAlreadyContact = await this.userModel.exists({
+    _id: userId,
+    contacts: contact._id,
+  });
+
+  if (isAlreadyContact) {
+    throw new Errors(HttpCode.BAD_REQUEST, Message.ALREADY_EXIST);
+  }
+
+  // 4️⃣ Push new contact ID into user's contacts
+  await this.userModel.findByIdAndUpdate(
+    userId,
+    { $push: { contacts: contact._id } },
+    { new: true }
+  );
+
+  // ✅ 5️⃣ Return only the created contact
+  return contact.toJSON() as unknown as User;
+}
+
+
+
+
+public async getMyContacts(user : User): Promise<User[]> {
+  const userId = shapeIntoMongooseObjectId(user);
+
+  const result = await this.userModel.findOne({
+    _id: userId,
+    userStatus: UserStatus.ACTIVE,
+  })
+  .populate({
+    path: "contacts",
+    select: "_id email userStatus bio userImage firstName lastName", // only needed fields
+  })
+  .select("contacts")
+  .exec();
+
+  if (!result) throw new Errors(HttpCode.NOT_FOUND, Message.NO_DATA_FOUND);
+
+  // At runtime, result.contacts is populated as User[]
+  // But TypeScript still thinks it's ObjectId[]
+  // So we cast it explicitly
+  return result.contacts as unknown as User[];
+}
+
+
 
   public async getUserDetails(user:User): Promise <User> {
     const userId = shapeIntoMongooseObjectId(user._id);
@@ -91,19 +137,20 @@ class UserService {
    return result.toJSON() as unknown as User;
   }
 
+
   public async searchUserByUsername(payload : string) {
   const result = await this.userModel.findOne({
   username: { $regex: new RegExp(`^${payload}$`, "i") }, // case-insensitive match
   userStatus: UserStatus.ACTIVE
   })
-  .exec()
+  .select('userImage email bio firstName lastName username ').exec()
   if(!result)  if(!result) throw new Errors(HttpCode.NOT_FOUND, Message.NO_DATA_FOUND);
   return result.toJSON() as unknown as User
   }
 
   public async getUserById(userId: string): Promise<User> {
     const result = await this.userModel.findById(userId)
-      .select("username userImage userEmail userPhone")
+      .select("username userImage email userPhone")
       .exec();
     if (!result) {
       throw new Errors(HttpCode.NOT_FOUND, Message.NO_DATA_FOUND);
@@ -113,11 +160,32 @@ class UserService {
 
   public async getAllUsers(): Promise<User[]> {
     const users = await this.userModel.find({ userStatus: UserStatus.ACTIVE })
-      .select("username userImage userEmail")
+      .select("username userImage email")
       .exec();
     return users.map(user => user.toJSON() as unknown as User);
   }
 
+  public async deleteContact(user : User, contactId : string ): Promise <User> {
+    const userId = shapeIntoMongooseObjectId(user._id);
+    const existingContact = await this.userModel.findOne({ _id : userId})
+    if(!existingContact) {
+      throw new Errors(HttpCode.NOT_FOUND, Message.NO_DATA_FOUND);
+    }
+    existingContact.contacts = existingContact.contacts.filter(
+      (contact) => contact.toString() !== contactId
+    );
+    await existingContact.save();
+    const result = await this.userModel.findOne({
+      _id: userId,    
+      userStatus: UserStatus.ACTIVE
+   })
+   .exec();
+    
+    if(!result) throw new Errors(HttpCode.NOT_FOUND, Message.NO_DATA_FOUND);
+    return result.toJSON() as unknown as User;; 
+    }
 }
+
+
 
 export default UserService;
