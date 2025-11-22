@@ -64,6 +64,8 @@ class ChatService {
     return chat.toJSON() as unknown as Chat;
   }
 
+  
+
 
 }
 

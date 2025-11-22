@@ -6,6 +6,7 @@ import { Message as IMessage, MessageInput } from "../libs/types/message";
 import { shapeIntoMongooseObjectId } from "../libs/utils/config";
 import { Types } from "mongoose";
 import {MessageEnum} from "../libs/enums/message.enum"
+import { Chat } from "@/libs/types/chat";
 
 class MessageService {
   private readonly messageModel;
@@ -54,23 +55,38 @@ class MessageService {
   /**
    * Send a message to a chat
    */
-  public async sendMessage(input: MessageInput): Promise<IMessage> {
-    try {
-      console.log("Input to sendMessage:", input);
-      const message = await this.messageModel.create({
-        ...input,
-      
-        readBy: [{ user: input?.sender, at: new Date() }],
-      });
+  public async sendMessage(input: MessageInput): Promise<IMessage & { chat: Chat }> {
+  try {
+    console.log("Input to sendMessage:", input);
 
-      // update chat with lastMessage
-      await this.chatModel.findByIdAndUpdate(input?.chat, { lastMessage: message._id });
-      return message.toJSON() as unknown as IMessage;
-    } catch (err) {
-      console.error("Error: sendMessage", err);
-      throw new Errors(HttpCode.BAD_REQUEST, ErrorMessage.CREATION_FAILED);
-    }
+    // 1. Create the message
+    const message = await this.messageModel.create({
+      ...input,
+      readBy: [{ user: input.sender, at: new Date() }],
+    });
+
+    // 2. Update the chat with lastMessage
+    await this.chatModel.findByIdAndUpdate(input.chat, { lastMessage: message._id });
+
+    // 3. Populate the chat
+    const populatedMessage = await this.messageModel
+      .findById(message._id)
+      .populate({
+        path: "chat",
+        populate: { path: "participants admins", select: "_id name email userImage" }, // populate nested fields
+      }).
+      populate({
+        path: "chat",
+        populate: { path: "lastMessage"}
+      })
+      .exec();
+
+    return populatedMessage as unknown as IMessage & { chat: Chat };
+  } catch (err) {
+    console.error("Error: sendMessage", err);
+    throw new Errors(HttpCode.BAD_REQUEST, ErrorMessage.CREATION_FAILED);
   }
+}
 
   /**
    * Mark message as read by a user
@@ -120,6 +136,98 @@ public async messageRead(messages : IMessage[]) {
     throw new Errors(HttpCode.BAD_REQUEST, ErrorMessage.UPDATE_FAILED);
   }
 }
+
+public async addReaction(messageId: string, userId: string, reaction: string) {
+  try {
+    // 1. Remove old reaction from this user
+    await this.messageModel.findByIdAndUpdate(
+      messageId,
+      {
+        $pull: { reactions: { user: userId } }
+      }
+    );
+
+    // 2. Add the new reaction
+    const updatedMessage = await this.messageModel.findByIdAndUpdate(
+      messageId,
+      {
+        $push: { reactions: { user: userId, reaction } }
+      },
+      { new: true }
+    ).populate("reactions.user", "userImage firstName lastName");
+
+    if (!updatedMessage) {
+      throw new Errors(HttpCode.NOT_FOUND, ErrorMessage.NOT_FOUND);
+    }
+
+    return updatedMessage;
+
+  } catch (err) {
+    throw new Errors(HttpCode.BAD_REQUEST, ErrorMessage.UPDATE_FAILED);
+  }
+}
+
+
+public async removeReaction(messageId: string, userId: string) {
+  try {
+    const updatedMessage = await this.messageModel.findByIdAndUpdate(
+      messageId,
+      {
+        $pull: { reactions: { user: userId } }
+      },
+      { new: true }
+    );
+
+    if (!updatedMessage) {
+      throw new Errors(HttpCode.NOT_FOUND, ErrorMessage.NOT_FOUND);
+    }
+
+    return updatedMessage;
+
+  } catch (err) {
+    throw new Errors(HttpCode.BAD_REQUEST, ErrorMessage.UPDATE_FAILED);
+  }
+}
+
+public async deleteMessage(messageId: string) {
+  try {
+    const deletedMessage = await this.messageModel.findByIdAndDelete(messageId);
+
+    if (!deletedMessage) {
+      throw new Errors(HttpCode.NOT_FOUND, ErrorMessage.NOT_FOUND);
+    }
+
+    return deletedMessage;
+  } catch (err) {
+    // if it's already a custom error, rethrow it
+    if (err instanceof Errors) {
+      throw err;
+    }
+
+    throw new Errors(HttpCode.BAD_REQUEST, ErrorMessage.DELETE_FAILED);
+  }
+}
+
+public async updateMessage(messageId: string, text: string) {
+  try {
+    const updatedMessage = await this.messageModel.findByIdAndUpdate(messageId, {text}, { new: true });
+
+    if (!updatedMessage) {
+      throw new Errors(HttpCode.NOT_FOUND, ErrorMessage.NOT_FOUND);
+    }
+
+    return updatedMessage;
+  } catch (err) {
+    // if it's already a custom error, rethrow it
+    if (err instanceof Errors) {
+      throw err;
+    }
+
+    throw new Errors(HttpCode.BAD_REQUEST, ErrorMessage.UPDATE_FAILED);
+  }
+}
+
+
 
 }
 

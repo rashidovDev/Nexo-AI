@@ -10,6 +10,7 @@ export enum HttpCode {
 }
 
 export enum Message {
+    DELETE_FAILED = "Delete failed!",
     ALREADY_REGISTERED = "User with this email already exists",
     NO_USER_FOUND = "No user found with that email.",
     CANT_CR_SELF = "You can not add yourself as a contact",

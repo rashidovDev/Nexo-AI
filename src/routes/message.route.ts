@@ -12,4 +12,11 @@ router.post('/mark-read', authMiddleware, messageController.markMessageRead);
 
 router.get('/chat-id/:chatId', authMiddleware, messageController.getMessages);
 
+router.put('/add-reaction', authMiddleware, messageController.addReaction);
+
+router.delete('/delete-message/:messageId', authMiddleware, messageController.deleteMesage);
+
+// UPDATE MESSAGE
+router.put('/edit-message',  messageController.editMessage);
+
 export default router;

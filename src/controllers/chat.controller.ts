@@ -22,11 +22,13 @@ chatController.listMyChats = async (req: Request, res: Response) => {
 }
 };
 
+
+
 chatController.getOrCreateDM = async (req: Request, res: Response) => {
   const userId = (req as any).user._id as string;
-  const parsed = createDMOrGetSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(HttpCode.BAD_REQUEST).json({message : parsed.error.message});
-  const otherId = parsed.data.userId;
+  // const parsed = createDMOrGetSchema.safeParse(req.body);
+  // if (!parsed.success) return res.status(HttpCode.BAD_REQUEST).json({message : parsed.error.message});
+  const otherId = req.body.userId as string;
   try {
     const result:Chat = await chatService.getOrCreateDM(userId, otherId);
     res.status(HttpCode.OK).json(result);

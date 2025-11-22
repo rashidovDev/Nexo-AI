@@ -28,6 +28,8 @@ messageController.getMessages = async (req: Request, res: Response) => {
   }
 };
 
+
+
 /**
  * Send a message in a chat
  */
@@ -106,5 +108,52 @@ messageController.markMessageRead = async (req: Request, res: Response) => {
     }
   }
 };
+
+messageController.addReaction = async (req: Request, res: Response) => {
+  const userId = (req as any).user._id as string;
+  const { messageId, reaction } = req.body;
+
+  try {
+    // REMOVE reaction if reaction is empty
+    if (!reaction) {
+      const result = await messageService.removeReaction(messageId, userId);
+      return res.status(200).json({ result, message: "Reaction removed" });
+    }
+
+    // ADD or UPDATE reaction
+    const result = await messageService.addReaction(messageId, userId, reaction);
+    return res.status(200).json({ result });
+
+  } catch (err: any) {
+    if (err instanceof Errors) {
+      return res.status(err.code).json(err);
+    }
+    return res.status(Errors.standard.code).json(Errors.standard);
+  }
+};
+
+messageController.deleteMesage = async (req: Request, res: Response) => {
+  const messageId = req.params.messageId;
+  try {
+    const result: IMessage = await messageService.deleteMessage(messageId);
+    res.status(HttpCode.OK).json({deletedMessage : result});
+  } catch (err) {
+    if (err instanceof Errors) res.status(err.code).json(err);
+    else res.status(Errors.standard.code).json(Errors.standard);
+  }
+}
+
+messageController.editMessage = async (req: Request, res: Response) => {
+  const {messageId, text} = req.body;
+  try {
+    const result: IMessage = await messageService.updateMessage(messageId, text);
+    res.status(HttpCode.OK).json({updatedMessage : result});
+  } catch (err) {
+    if (err instanceof Errors) res.status(err.code).json(err);
+    else res.status(Errors.standard.code).json(Errors.standard);
+  }
+}
+
+
 
 export default messageController
