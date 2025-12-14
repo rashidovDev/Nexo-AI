@@ -35,7 +35,7 @@ messageController.getMessages = async (req: Request, res: Response) => {
  */
 messageController.sendMessage = async (req: Request, res: Response) => {
   const sender = (req as any).user._id as string;
-  console.log("Data", req.body)
+
   const parsed = sendMessageSchema.safeParse(req.body);
   // console.log("Parsed message data:", parsed);
 

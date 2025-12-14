@@ -11,6 +11,7 @@ const corsOrigin = require("./middleware/cors.middleware")
 import userRoute from './routes/user.route'
 import messageRoute from './routes/message.route'
 import chatRoute from './routes/chat.route'
+import qrRoute from './routes/qr.route'
 
 const app = express(); 
 
@@ -25,6 +26,7 @@ app.use(errorMiddleware);
 app.use('/api/user', userRoute)
 app.use('/api/message', messageRoute)
 app.use('/api/chat', chatRoute)
+app.use("/api/qr", qrRoute)
  
 app.use(
   cors({

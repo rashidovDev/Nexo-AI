@@ -46,7 +46,7 @@ chatController.createGroup = async (req: Request, res: Response) => {
 
     try {
         const result: Chat = await chatService.createGroup(userId, name, participantIds);
-        res.status(HttpCode.CREATED).json(result);
+        res.status(HttpCode.CREATED).json({group : result});
     } catch (err) {
         if(err instanceof Errors) res.status(err.code).json(err);
         else res.status(Errors.standard.code).json(Errors.standard);

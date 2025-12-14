@@ -138,15 +138,28 @@ public async getMyContacts(user : User): Promise<User[]> {
   }
 
 
-  public async searchUserByUsername(payload : string) {
-  const result = await this.userModel.findOne({
-  username: { $regex: new RegExp(`^${payload}$`, "i") }, // case-insensitive match
-  userStatus: UserStatus.ACTIVE
-  })
-  .select('userImage email bio firstName lastName username ').exec()
-  if(!result)  if(!result) throw new Errors(HttpCode.NOT_FOUND, Message.NO_DATA_FOUND);
-  return result.toJSON() as unknown as User
+  public async searchUserByUsername(payload: string) {
+    const query = payload.trim();
+    if (!query) return [];
+
+    const regex = new RegExp(query, "i");
+    const result = await this.userModel
+      .find({
+        $or: [
+          { username: { $regex: regex } },
+          { firstName: { $regex: regex } },
+          { lastName: { $regex: regex } },
+          { email: { $regex: regex } },
+        ],
+        userStatus: UserStatus.ACTIVE,
+      })
+      .select("userImage email bio firstName lastName username")
+      .limit(25)
+      .exec();
+
+    return result.map(user => user.toJSON() as unknown as User);
   }
+
 
   public async getUserById(userId: string): Promise<User> {
     const result = await this.userModel.findById(userId)

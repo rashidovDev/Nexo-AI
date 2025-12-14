@@ -1,6 +1,8 @@
 import UserModel from '../models/User.model';
 import userController from '../controllers/user.controller';
+
 import { Router } from 'express';
+
 const authMiddleware = require("../middleware/auth.middleware")
 
 const router = Router();
@@ -9,6 +11,7 @@ const router = Router();
 // router.post('/signup', userController.signup);
 router.post('/login', userController.login);
 router.post('/verify', userController.verify);
+
 
 
 // SEND OTP

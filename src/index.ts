@@ -3,13 +3,26 @@ dotenv.config();
 import http from "http";
 import app from "./app";
 import mongoose from "mongoose";
+import { Server } from "socket.io";
+import { initSocket } from "./socket/index";
 
 const PORT = process.env.PORT || 4000;  
 const dbUrl = process.env.DB_URL;
 
 const server = http.createServer(app);
 
-const start = async () => {
+// ✅ Attach socket.io to existing server 
+const io = new Server(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"],
+  },
+});
+
+// ✅ Initialize socket events
+initSocket(io);
+
+const start = async () => { 
  try {  
         if (!dbUrl) {
             throw new Error("DB_URL environment variable is not defined");

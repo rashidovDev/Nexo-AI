@@ -15,7 +15,7 @@ class ChatService {
    public async getMyChats(userId : string): Promise<Chat[]> {
     try {
     const chats : Chat[] = await this.chatModel.find({ participants: userId })
-      .populate("participants", "email username userImage bio")
+      .populate("participants", "email username userImage bio firstName lastName")
       .populate({
         path: "lastMessage",
       })

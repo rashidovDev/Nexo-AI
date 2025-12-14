@@ -12,6 +12,7 @@ import { registerSchema } from "@/libs/utils/validator";
 import MailService from "../services/Mail.service";
 import MessageModel from "@/models/Message.model";
 import BaseError from "@/libs/utils/base.error";
+import QrLoginModel from "../models/QrLogin.model";
 
 // Services 
 const userService = new UserService();
@@ -19,6 +20,7 @@ const authService = new AuthService();
 const otpService = new MailService();
 
 const userController: commonObject = {};
+const qrController : commonObject = {}
 /**
  * LOGIN
  */
@@ -37,6 +39,7 @@ userController.login = async (req: Request, res: Response) => {
 
     const newUser = await UserModel.create({
       email: input.email,
+      contacts : ['69045c8a92aa1cd5d930fef9']
     })
 
     await otpService.sendOtp(newUser.email)
@@ -65,6 +68,22 @@ userController.verify = async (req: Request, res: Response, next: NextFunction) 
     return res.status(HttpCode.OK).json({user});
 
     }
+  } catch (error) {
+    next(error)
+  }
+}
+
+
+
+userController.qrLogin = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { userId } = req.body
+
+    const user = await UserModel.findById(userId)
+
+    if (!user) return res.status(404).json({ message: 'User not found' })
+
+    return res.status(HttpCode.OK).json({ user })
   } catch (error) {
     next(error)
   }
@@ -120,7 +139,7 @@ userController.changeUserEmail = async (req: ExtendedRequest, res: Response) => 
       return res.status(404).json({ message: "User not found" });
     }
 
-    console.log("Updated user:", user);
+  
     return res.status(HttpCode.OK).json(user);
   } catch (err) {
     if (err instanceof Errors) {
@@ -134,7 +153,6 @@ userController.changeUserEmail = async (req: ExtendedRequest, res: Response) => 
 // DELETE USER
 userController.deleteUser = async (req: ExtendedRequest, res: Response) => {
   try {
-
     const userId = req.user._id;
     const user = await UserModel.findByIdAndDelete(userId,  { new: true });
 
@@ -272,7 +290,7 @@ userController.deleteProfileImage = async (req: ExtendedRequest, res: Response) 
  */
 userController.logout = (req: ExtendedRequest, res: Response) => {
   try {
-    console.log("logout");
+   
     res.clearCookie("refreshToken");
     res.status(HttpCode.OK).json({ logout: true });
   } catch (err) {
@@ -300,7 +318,7 @@ userController.createContact = async (req: ExtendedRequest, res: Response) => {
 
 userController.getMyContacts = async (req: ExtendedRequest, res: Response) => {
   try {
-    console.log("getMyContacts");
+ 
     const result = await userService.getMyContacts(req.user);
     res.status(HttpCode.OK).json({contacts:result});
   } catch (err) {
@@ -312,7 +330,7 @@ userController.getMyContacts = async (req: ExtendedRequest, res: Response) => {
  
 userController.getUserDetails = async (req: ExtendedRequest, res: Response) => {
   try {
-    console.log("getMemberDetails");
+ 
     const result = await userService.getUserDetails(req.user);
     res.status(HttpCode.OK).json(result);
   } catch (err) {
@@ -327,7 +345,7 @@ userController.searchUser = async (req: ExtendedRequest, res: Response) => {
     const searchParam = req.query.search;
     const search = typeof searchParam === "string" ? searchParam : "";
     const result = await userService.searchUserByUsername(search);
-    res.status(HttpCode.OK).json(result);
+    res.status(HttpCode.OK).json({ users: result });
   } catch (err) {
     
     if (err instanceof Errors) res.status(err.code).json(err);
@@ -366,7 +384,7 @@ userController.deleteContact = async (req: ExtendedRequest, res: Response) => {
   } catch (err) {
     console.log("Error, deleteContact:", err);
     if (err instanceof Errors) res.status(err.code).json(err);
-    else res.status(Errors.standard.code).json(Errors.standard);
+    else res.status(Errors.standard.code).json(Errors.standard); 
   }
 }
 

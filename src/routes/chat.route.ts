@@ -9,7 +9,7 @@ router.get('/chats', authMiddleware, chatController.listMyChats);
 router.post('/create-dm', authMiddleware, chatController.getOrCreateDM);
 
 //Create group chat
-router.post('/group', authMiddleware, chatController.createGroup);
+router.post('/create-group', authMiddleware, chatController.createGroup);
 
 
 export default router;

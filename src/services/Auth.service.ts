@@ -64,7 +64,7 @@ class AuthService {
   public async verifyAccessToken(token: string): Promise<User> {
     try {
       const decoded = jwt.verify(token, this.accessSecret) as User;
-      console.log(`---[ACCESS] memberNick: ${decoded.username}---`);
+      // console.log(`---[ACCESS] memberNick: ${decoded.username}---`);
       return decoded;
     } catch (err) {
       throw new Errors(HttpCode.UNAUTHORIZED, Message.INVALID_TOKEN);
